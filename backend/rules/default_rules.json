@@ -1,0 +1,14 @@
+{
+  "min_dpi_warning": 150,
+  "min_dpi_critical": 72,
+  "min_clearance_mm": 3.0,
+  "safe_margin_mm": 3.0,
+  "safe_area_norm": null,
+  "dieline_colors": [],
+  "color_tolerance": 0.08,
+  "dieline_layer_names": ["dieline", "die line", "cut", "fold", "crease"],
+  "detect_dashed_as_fold": true,
+  "image_target_width_mm": null,
+  "preview_zoom": 2.0,
+  "max_pages": 20
+}
