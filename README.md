@@ -1,10 +1,10 @@
 # PrintGuard AI
 
-### Packaging artwork preflight, visual evidence, and batch-aware production checks
+### AI-powered packaging artwork preflight with RAG assistant and production validation
 
-[![React](https://img.shields.io/badge/Frontend-React%2018-61DAFB?logo=react&logoColor=white)](https://react.dev/) [![Vite](https://img.shields.io/badge/Build-Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/) [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/) [![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC)](https://pytest.org/)
+[![React](https://img.shields.io/badge/Frontend-React%2018-61DAFB?logo=react&logoColor=white)](https://react.dev/) [![Vite](https://img.shields.io/badge/Build-Vite-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/) [![FastAPI](https://img.shields.io/badge/API-FastAPI-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/) [![Python](https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white)](https://www.python.org/) [![Tests](https://img.shields.io/badge/Tests-pytest-0A9EDC)](https://pytest.org/) [![AI](https://img.shields.io/badge/AI-RAG%20Powered-FF6B6B)](https://github.com/Manoj-Barki/Esko)
 
-**PrintGuard AI is a packaging preflight assistant that helps teams catch common artwork risks before files reach production.** Upload a PDF, PNG, or JPEG to receive structured findings, visual page previews, severity labels, evidence, recommended actions, and a downloadable HTML report. Optional batch tracking connects inspections to manufacturing and expiry dates.
+**PrintGuard AI is an AI-powered packaging preflight assistant that helps teams catch production risks before files reach the press.** Upload PDFs, PNGs, or JPEGs for automated validation with 8 industry-standard checks, get AI-powered explanations via RAG system, chat with the AI assistant about packaging standards, and receive comprehensive reports. Supports multi-file batch uploads and production-ready validation for packaging workflows.
 
 > **Important:** PrintGuard is a screening aid, not a print-readiness certification. Always validate artwork against the printer's and packaging line's specifications.
 
@@ -25,8 +25,21 @@ PrintGuard combines deterministic preflight checks with visual evidence and expl
 | `RES-001` | Effective image resolution | Flags raster imagery below configured DPI warning/critical thresholds. |
 | `GEOM-001` | Text near cut/fold geometry | Flags text crossing or too close to detected dieline geometry. |
 | `SAFE-001` | Safe-area boundary | Flags text outside the configured safe area near the page edge. |
+| `BLEED-001` | **Bleed validation** | **Validates 3mm bleed areas on all sides (packaging industry standard).** |
+| `TRIM-001` | **Trim mark detection** | **Detects presence of trim/crop marks for production cutting (expects 4+ marks).** |
+| `FONT-001` | **Font embedding** | **Ensures all fonts are embedded or subsetted in PDF (critical for RIP).** |
+| `OVERPRINT-001` | **White overprint detection** | **Detects white elements set to overprint (prevents disappearing elements).** |
+| `TEXT-001` | **Text legibility** | **Validates minimum text sizes: 6pt general, 7pt reversed, 8pt uncoated.** |
 
 The checks are configurable. Dieline identification can use configured stroke colours and layer names; dashed lines can be treated as probable folds and may require review.
+
+### 🤖 AI Features
+
+- **RAG-Powered Assistant:** Chat interface with AI assistant trained on packaging standards and PrintGuard rules
+- **AI Explanations:** Get context-aware explanations for any finding using the RAG knowledge base
+- **Vector Database:** Local ChromaDB storage with sentence-transformers embeddings (runs offline)
+- **Optional OpenAI:** Connect OpenAI API for enhanced natural language responses
+- **Pre-loaded Knowledge:** Industry standards for DPI, bleed, dielines, substrates, and common defects
 
 ## Product workflow
 
@@ -35,17 +48,21 @@ flowchart TD
     A[Open PrintGuard] --> B{Choose workflow}
     B --> C[Inspect artwork]
     B --> D[Manage batches]
-    C --> E[Upload PDF, PNG or JPEG]
-    E --> F[Optionally choose a batch and override rules]
-    F --> G[Backend validates type and size]
-    G --> H[Inspect pages, images and geometry]
-    H --> I[Generate findings and page previews]
-    I --> J[Review severity, evidence and locations]
-    J --> K[Mark a finding reviewed / false positive]
-    J --> L[Download HTML report]
-    D --> M[Create, view or delete batches]
-    M --> N[Link inspections to batch]
-    N --> O[Expiry-based cleanup]
+    B --> E[AI Assistant]
+    C --> F[Drag & drop multiple files]
+    F --> G[Optionally choose a batch and override rules]
+    G --> H[Backend validates type and size]
+    H --> I[Run 8 production checks]
+    I --> J[Generate findings and page previews]
+    J --> K[Review severity, evidence and locations]
+    K --> L[Get AI explanation for findings]
+    K --> M[Mark a finding reviewed / false positive]
+    K --> N[Download HTML report]
+    D --> O[Create, view or delete batches]
+    O --> P[Link inspections to batch]
+    P --> Q[Expiry-based cleanup]
+    E --> R[Chat with AI about packaging standards]
+    E --> S[Ask about DPI, bleed, fonts, etc.]
 ```
 
 ## Architecture
@@ -60,15 +77,22 @@ flowchart LR
     API --> IMG[PNG / JPEG inspector]
     PDF --> GEO[Geometry checks]
     PDF --> RES[Resolution checks]
+    PDF --> PROD[Production checks]
     IMG --> RES
     GEO --> FIND[Structured findings]
     RES --> FIND
+    PROD --> FIND
     FIND --> STORE[Inspection JSON + page previews]
     FIND --> REPORT[HTML report generator]
     API --> DB[SQLite batch database]
+    API --> RAG[RAG Service]
+    RAG --> VDB[ChromaDB vector store]
+    RAG --> EMB[HuggingFace embeddings]
+    RAG --> LLM[OpenAI GPT-3.5 optional]
     DB --> PURGE[Expiry purge loop]
     STORE --> API
     REPORT --> API
+    RAG --> API
     API --> UI
 ```
 
@@ -86,14 +110,23 @@ flowchart LR
 
 ### Inspect
 
-- Upload PDF, PNG, or JPEG artwork (default maximum upload size: 25 MB).
-- Optionally associate the inspection with a batch.
-- Override rule settings for a single inspection.
-- Review findings by severity and inspect their evidence and page locations.
-- View page previews with finding overlays.
-- Mark findings as reviewed/false positive.
-- Download a standalone HTML report.
-- See backend connectivity status in the header.
+- **Multi-file upload:** Drag & drop multiple PDFs, PNGs, or JPEGs at once (25 MB per file default)
+- **Batch processing:** Sequential inspection with progress indicators for each file
+- **8 production checks:** Resolution, geometry, safe-area, bleed, trim marks, fonts, overprint, text size
+- **AI explanations:** Click "Get AI explanation" on any finding for context-aware help from RAG system
+- **Visual overlays:** Page previews with finding boxes mapped to exact locations
+- **Status management:** Mark findings as reviewed/false positive
+- **HTML reports:** Download comprehensive standalone reports
+- **Batch association:** Link inspections to manufacturing batches
+- **Live status:** Backend connectivity indicator in header
+
+### AI Assistant
+
+- **RAG-powered chat:** Ask questions about packaging standards, DPI requirements, bleed specs, etc.
+- **Pre-loaded knowledge:** Industry standards for resolution, dielines, substrates, common defects
+- **Source citations:** AI responses include source references from the knowledge base
+- **Offline capable:** Local embeddings work without API keys (OpenAI optional for enhanced responses)
+- **Finding explanations:** Get detailed explanations for any inspection finding
 
 ### Batches
 
@@ -129,11 +162,14 @@ Tune these values to the printer, substrate, finishing process, and packaging sp
 
 | Layer | Technology | Responsibility |
 |---|---|---|
-| Frontend | React 18, Vite, JavaScript, CSS | Upload flow, findings UI, overlays, batches, API status |
+| Frontend | React 18, Vite, JavaScript, CSS | Multi-file upload, findings UI, AI chat, overlays, batches, API status |
 | API | FastAPI, Uvicorn, Pydantic | HTTP endpoints, input validation, orchestration, structured response models |
-| PDF processing | PyMuPDF | PDF page inspection and preview generation |
+| PDF processing | PyMuPDF | PDF page inspection, production checks, preview generation |
 | Raster processing | Pillow | PNG/JPEG loading and image inspection |
-| Persistence | JSON files + SQLite | Inspection results, uploaded files, previews, batch records and links |
+| AI/RAG | LangChain, ChromaDB, HuggingFace, OpenAI | Vector database, embeddings, semantic search, AI Q&A |
+| Embeddings | sentence-transformers/all-MiniLM-L6-v2 | Local semantic embeddings (runs offline) |
+| LLM | OpenAI GPT-3.5-turbo (optional) | Natural language responses for chat and explanations |
+| Persistence | JSON files + SQLite + ChromaDB | Inspection results, batch records, vector knowledge base |
 | Reporting | Generated HTML | Portable report download |
 | Testing | pytest, HTTPX | API and rule behaviour tests |
 
@@ -144,13 +180,14 @@ Tune these values to the printer, substrate, finishing process, and packaging sp
 ```text
 Esko/
 ├── README.md                         # Project overview, setup, architecture and API
+├── CHANGELOG.md                      # Comprehensive feature documentation
 ├── .gitignore                        # Ignores node_modules, Python cache and virtualenv
 ├── backend/
-│   ├── main.py                       # FastAPI app, endpoints, upload flow, cleanup lifecycle
+│   ├── main.py                       # FastAPI app, endpoints, RAG endpoints, cleanup lifecycle
 │   ├── config.py                     # Defaults + per-inspection rule validation
 │   ├── schemas.py                    # Finding, status and inspection result models
 │   ├── db.py                         # SQLite batches, inspection links and expiry purge
-│   ├── requirements.txt              # Python dependencies
+│   ├── requirements.txt              # Python dependencies (includes AI/RAG packages)
 │   ├── rules/
 │   │   └── default_rules.json        # Default preflight thresholds and dieline hints
 │   ├── services/
@@ -160,6 +197,8 @@ Esko/
 │   │   ├── image_inspector.py        # PNG/JPEG inspection and previews
 │   │   ├── resolution_checks.py      # RES-001 effective-resolution check
 │   │   ├── geometry_checks.py        # GEOM-001 and SAFE-001 checks
+│   │   ├── production_checks.py      # BLEED/TRIM/FONT/OVERPRINT/TEXT production checks
+│   │   ├── rag_service.py            # RAG system with ChromaDB and embeddings
 │   │   ├── report_generator.py       # Downloadable HTML report generation
 │   │   └── summary.py                # Finding IDs and result summary helpers
 │   └── tests/
@@ -176,12 +215,13 @@ Esko/
     ├── vite.config.js                # Dev server on :3000 and /api proxy to :8000
     └── src/
         ├── main.jsx                  # React bootstrap and stylesheet import
-        ├── App.jsx                   # Header, navigation, health state and view routing
-        ├── api.js                    # Typed-by-convention API wrapper and error handling
-        ├── styles.css                # Application styling
+        ├── App.jsx                   # Header, navigation, AI Assistant tab, view routing
+        ├── api.js                    # API wrapper with RAG endpoints
+        ├── styles.css                # Application styling (includes chat UI)
         └── components/
-            ├── UploadView.jsx        # File upload and inspection options
-            ├── ResultView.jsx        # Findings, page preview, statuses and report link
+            ├── UploadView.jsx        # Multi-file drag & drop upload with progress
+            ├── ResultView.jsx        # Findings, AI explanations, overlays, report link
+            ├── AssistantView.jsx     # AI chat interface for packaging standards Q&A
             └── BatchesView.jsx       # Batch create/list/delete and linked inspections
 ```
 
@@ -280,6 +320,10 @@ The backend exposes the following endpoints. Request and response schemas can al
 | `GET` | `/api/batches/{batch_id}` | Get a batch by ID |
 | `DELETE` | `/api/batches/{batch_id}` | Delete a batch and associated stored inspection data |
 | `POST` | `/api/batches/purge-expired` | Manually trigger expiry cleanup |
+| **`POST`** | **`/api/rag/chat`** | **AI chat: send question, get answer with sources from knowledge base** |
+| **`GET`** | **`/api/rag/search`** | **Semantic search in knowledge base (query param `query`, optional `k`)** |
+| **`POST`** | **`/api/rag/explain/{finding_id}`** | **Get AI explanation for specific finding (requires `inspection_id` param)** |
+| **`GET`** | **`/api/rag/stats`** | **Get RAG system statistics (document count, status, OpenAI configured)** |
 
 ### Inspection request flow
 
@@ -334,9 +378,11 @@ By default, the backend stores data under a `printguard` directory inside the op
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `PRINTGUARD_STORAGE` | OS temp directory + `printguard` | Root directory for uploads, results, previews and SQLite DB |
+| `PRINTGUARD_STORAGE` | OS temp directory + `printguard` | Root directory for uploads, results, previews, SQLite DB, and ChromaDB |
 | `PRINTGUARD_MAX_MB` | `25` | Maximum accepted upload size in MB |
 | `PRINTGUARD_PURGE_MINUTES` | `60` | Interval between automatic expiry purges |
+| **`OPENAI_API_KEY`** | **None** | **Optional OpenAI API key for enhanced AI responses (embeddings work without it)** |
+| **`HF_TOKEN`** | **None** | **Optional HuggingFace token for faster model downloads and higher rate limits** |
 | `VITE_API_BASE` | Empty string | Optional API base URL for a separately hosted frontend; configure backend CORS accordingly |
 
 Example (PowerShell):
