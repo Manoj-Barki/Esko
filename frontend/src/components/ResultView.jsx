@@ -11,6 +11,8 @@ export default function ResultView({ result, onChange, onNew }) {
   const [sev, setSev] = useState("all");
   const [hideDismissed, setHideDismissed] = useState(true);
   const [error, setError] = useState("");
+  const [aiExplanation, setAiExplanation] = useState(null);
+  const [loadingAi, setLoadingAi] = useState(false);
 
   const pageInfo = result.pages.find((p) => p.number === page) || result.pages[0];
   const inactive = (f) => f.status === "false_positive" || f.status === "resolved";
@@ -33,7 +35,21 @@ export default function ResultView({ result, onChange, onNew }) {
   function pick(f) {
     setSelected(f.id);
     setPage(f.page);
+    setAiExplanation(null); // Reset AI explanation when switching findings
     document.getElementById(`finding-${f.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }
+
+  async function explainWithAi(f) {
+    setLoadingAi(true);
+    setError("");
+    try {
+      const explanation = await api.ragExplainFinding(result.id, f.id);
+      setAiExplanation(explanation);
+    } catch (e) {
+      setError(`AI explanation failed: ${e.message}`);
+    } finally {
+      setLoadingAi(false);
+    }
   }
 
   return (
@@ -138,7 +154,36 @@ export default function ResultView({ result, onChange, onNew }) {
                         <> ({Object.entries(f.evidence.measurements).filter(([, v]) => v != null).map(([k, v]) => `${k.replace(/_/g, " ")}: ${v}`).join(", ")})</>
                       )}
                     </p>
+
+                    {aiExplanation && aiExplanation.finding_id === f.id && (
+                      <div className="ai-explanation">
+                        <h3>🤖 AI Assistant Explanation</h3>
+                        <p>{aiExplanation.explanation}</p>
+                        {aiExplanation.sources && aiExplanation.sources.length > 0 && (
+                          <details>
+                            <summary>Sources ({aiExplanation.sources.length})</summary>
+                            <ul>
+                              {aiExplanation.sources.map((src, i) => (
+                                <li key={i}>
+                                  <strong>{src.metadata?.source || "Unknown"}</strong>
+                                  {src.metadata?.category && <em> • {src.metadata.category}</em>}
+                                  <p>{src.content}</p>
+                                </li>
+                              ))}
+                            </ul>
+                          </details>
+                        )}
+                      </div>
+                    )}
+
                     <div className="row">
+                      <button
+                        className="link"
+                        onClick={() => explainWithAi(f)}
+                        disabled={loadingAi}
+                      >
+                        {loadingAi ? "⏳ Loading..." : "🤖 Get AI explanation"}
+                      </button>
                       {f.status === "false_positive" || f.status === "resolved"
                         ? <button onClick={() => setStatus(f, "confirmed")}>Reopen</button>
                         : <>

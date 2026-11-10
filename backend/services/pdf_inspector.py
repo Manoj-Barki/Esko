@@ -9,6 +9,7 @@ from schemas import FileMeta, InspectionResult, PageInfo
 from .document import DocumentData, ImageRef, PageData, PathRef, TextLine
 from .geometry_checks import check_geometry
 from .resolution_checks import check_resolution
+from .production_checks import run_all_production_checks
 from .summary import finalize
 
 MAX_SEGMENTS_PER_PAGE = 20000
@@ -108,10 +109,17 @@ def inspect_pdf(path, config: Config, preview_dir: Path | None = None,
     t0 = time.perf_counter()
     path = Path(path)
     document = extract_document(path, config, preview_dir)
+
+    # Run all checks
     f1, c1 = check_resolution(document, config)
     f2, c2 = check_geometry(document, config)
+
+    # Run production validation checks on the original PDF
+    with pymupdf.open(str(path)) as doc:
+        c3, f3 = run_all_production_checks(doc, config)
+
     return finalize(
-        inspection_id=inspection_id, started=t0, findings=f1 + f2, checks=c1 + c2,
+        inspection_id=inspection_id, started=t0, findings=f1 + f2 + f3, checks=c1 + c2 + c3,
         file=FileMeta(filename=filename or path.name, kind="pdf", size_bytes=path.stat().st_size,
                       page_count=len(document.pages), physical_size_known=True),
         pages=[PageInfo(number=p.number, width=p.width, height=p.height, unit="pt", rotation=p.rotation,

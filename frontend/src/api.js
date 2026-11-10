@@ -52,4 +52,16 @@ export const api = {
   async health() {
     return (await request("/api/health")).json();
   },
+  async ragChat(question) {
+    return (await request("/api/rag/chat", { method: "POST", ...json({ question }) })).json();
+  },
+  async ragSearch(query, k = 5) {
+    return (await request(`/api/rag/search?query=${encodeURIComponent(query)}&k=${k}`)).json();
+  },
+  async ragExplainFinding(inspectionId, findingId) {
+    return (await request(`/api/rag/explain/${findingId}?inspection_id=${inspectionId}`, { method: "POST" })).json();
+  },
+  async ragStats() {
+    return (await request("/api/rag/stats")).json();
+  },
 };

@@ -7,12 +7,13 @@ const MAX_MB = 25;
 function num(v) { return v === "" || v == null ? undefined : Number(v); }
 
 export default function UploadView({ onDone }) {
-  const [file, setFile] = useState(null);
+  const [files, setFiles] = useState([]);
   const [drag, setDrag] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [batches, setBatches] = useState([]);
   const [batchId, setBatchId] = useState("");
+  const [uploadProgress, setUploadProgress] = useState({});
   const [rules, setRules] = useState({
     min_dpi_warning: "", min_dpi_critical: "", min_clearance_mm: "",
     safe_margin_mm: "", image_target_width_mm: "", dieline_colors: "",
@@ -21,12 +22,45 @@ export default function UploadView({ onDone }) {
 
   useEffect(() => { api.listBatches().then(setBatches).catch(() => {}); }, []);
 
-  function pick(f) {
+  function validateFile(f) {
+    if (!/\.(pdf|png|jpe?g)$/i.test(f.name)) {
+      return `${f.name}: Only PDF, PNG and JPEG files are accepted.`;
+    }
+    if (f.size > MAX_MB * 1024 * 1024) {
+      return `${f.name}: File is larger than ${MAX_MB} MB.`;
+    }
+    return null;
+  }
+
+  function pick(fileList) {
     setError("");
-    if (!f) return;
-    if (!/\.(pdf|png|jpe?g)$/i.test(f.name)) return setError("Only PDF, PNG and JPEG files are accepted.");
-    if (f.size > MAX_MB * 1024 * 1024) return setError(`File is larger than ${MAX_MB} MB.`);
-    setFile(f);
+    if (!fileList || fileList.length === 0) return;
+
+    const newFiles = Array.from(fileList);
+    const errors = [];
+    const validFiles = [];
+
+    newFiles.forEach(f => {
+      const err = validateFile(f);
+      if (err) {
+        errors.push(err);
+      } else {
+        validFiles.push(f);
+      }
+    });
+
+    if (errors.length > 0) {
+      setError(errors.join(" "));
+    }
+
+    if (validFiles.length > 0) {
+      setFiles(prev => [...prev, ...validFiles]);
+    }
+  }
+
+  function removeFile(index) {
+    setFiles(files.filter((_, i) => i !== index));
+    setError("");
   }
 
   function buildConfig() {
@@ -50,8 +84,29 @@ export default function UploadView({ onDone }) {
     let cfg;
     try { cfg = buildConfig(); } catch (e) { return setError(e.message); }
     setBusy(true);
+    setUploadProgress({});
+
     try {
-      onDone(await api.inspect(file, cfg, batchId));
+      const results = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setUploadProgress(prev => ({ ...prev, [i]: { name: file.name, status: 'uploading', progress: 0 } }));
+
+        try {
+          const result = await api.inspect(file, cfg, batchId);
+          results.push(result);
+          setUploadProgress(prev => ({ ...prev, [i]: { name: file.name, status: 'completed', progress: 100, result } }));
+        } catch (e) {
+          setUploadProgress(prev => ({ ...prev, [i]: { name: file.name, status: 'error', progress: 0, error: e.message } }));
+        }
+      }
+
+      if (results.length === 1) {
+        onDone(results[0]);
+      } else if (results.length > 1) {
+        // For now, show the first result. Can be enhanced for batch view
+        onDone(results[0]);
+      }
     } catch (e) {
       setError(e.message);
     } finally {
@@ -64,31 +119,77 @@ export default function UploadView({ onDone }) {
   return (
     <div className="upload">
       <h1>Check your dieline before it goes to press</h1>
-      <p className="lede">Upload a PDF, PNG or JPEG. PrintGuard looks for low-resolution images, text too close to cut and fold lines, and text outside the safe area, and shows you where each one is.</p>
+      <p className="lede">Upload PDF, PNG or JPEG files. PrintGuard looks for low-resolution images, text too close to cut and fold lines, and text outside the safe area, and shows you where each one is.</p>
 
       <div
-        className={`drop ${drag ? "drag" : ""} ${file ? "has" : ""}`}
+        className={`drop ${drag ? "drag" : ""} ${files.length > 0 ? "has" : ""}`}
         onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
         onDragLeave={() => setDrag(false)}
-        onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files[0]); }}
+        onDrop={(e) => { e.preventDefault(); setDrag(false); pick(e.dataTransfer.files); }}
         onClick={() => input.current?.click()}
         onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && input.current?.click()}
         role="button" tabIndex={0}
-        aria-label="Choose a file to inspect"
+        aria-label="Choose files to inspect"
       >
-        <input ref={input} type="file" accept={ACCEPT} hidden onChange={(e) => pick(e.target.files[0])} />
-        {file ? (
+        <input ref={input} type="file" accept={ACCEPT} multiple hidden onChange={(e) => pick(e.target.files)} />
+        {files.length > 0 ? (
           <>
-            <strong>{file.name}</strong>
-            <span>{(file.size / 1024 / 1024).toFixed(2)} MB. Click to choose a different file.</span>
+            <strong>{files.length} file{files.length > 1 ? 's' : ''} selected</strong>
+            <span>Click to add more files</span>
           </>
         ) : (
           <>
-            <strong>Drop a file here, or click to browse</strong>
-            <span>PDF, PNG or JPEG, up to {MAX_MB} MB</span>
+            <strong>Drop files here, or click to browse</strong>
+            <span>PDF, PNG or JPEG, up to {MAX_MB} MB each. Multiple files supported.</span>
           </>
         )}
       </div>
+
+      {files.length > 0 && (
+        <div className="file-list">
+          <h2>Selected Files</h2>
+          <ul>
+            {files.map((file, i) => (
+              <li key={i} className="file-item">
+                <div className="file-info">
+                  <strong>{file.name}</strong>
+                  <span className="file-size">{(file.size / 1024 / 1024).toFixed(2)} MB</span>
+                </div>
+                <button type="button" onClick={() => removeFile(i)} disabled={busy} aria-label={`Remove ${file.name}`}>
+                  ✕
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {Object.keys(uploadProgress).length > 0 && (
+        <div className="upload-progress">
+          <h2>Upload Progress</h2>
+          {Object.entries(uploadProgress).map(([index, prog]) => (
+            <div key={index} className={`progress-item ${prog.status}`}>
+              <div className="progress-header">
+                <strong>{prog.name}</strong>
+                <span className={`status-badge ${prog.status}`}>
+                  {prog.status === 'uploading' ? '⏳ Uploading...' :
+                   prog.status === 'completed' ? '✓ Completed' :
+                   prog.status === 'error' ? '✗ Error' : ''}
+                </span>
+              </div>
+              {prog.status === 'error' && <div className="error-msg">{prog.error}</div>}
+              {prog.status === 'completed' && prog.result && (
+                <button
+                  className="link"
+                  onClick={() => onDone(prog.result)}
+                >
+                  View results
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
 
       <details className="rules">
         <summary>Rules for this inspection <em>(optional, leave blank to use defaults)</em></summary>
@@ -116,8 +217,8 @@ export default function UploadView({ onDone }) {
       )}
 
       {error && <div className="banner err" role="alert">{error}</div>}
-      <button className="primary" disabled={!file || busy} onClick={run}>
-        {busy ? "Inspecting…" : "Run inspection"}
+      <button className="primary" disabled={files.length === 0 || busy} onClick={run}>
+        {busy ? `Inspecting ${files.length} file${files.length > 1 ? 's' : ''}...` : `Run inspection${files.length > 1 ? 's' : ''}`}
       </button>
     </div>
   );

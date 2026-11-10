@@ -3,6 +3,7 @@ import { api } from "./api.js";
 import UploadView from "./components/UploadView.jsx";
 import ResultView from "./components/ResultView.jsx";
 import BatchesView from "./components/BatchesView.jsx";
+import AssistantView from "./components/AssistantView.jsx";
 
 export default function App() {
   const [tab, setTab] = useState("inspect");
@@ -29,6 +30,7 @@ export default function App() {
         <nav aria-label="Main">
           <button className={tab === "inspect" ? "on" : ""} onClick={() => setTab("inspect")}>Inspect</button>
           <button className={tab === "batches" ? "on" : ""} onClick={() => setTab("batches")}>Batches</button>
+          <button className={tab === "assistant" ? "on" : ""} onClick={() => setTab("assistant")}>AI Assistant</button>
         </nav>
         <span className={`conn ${online === false ? "down" : online ? "up" : ""}`} role="status">
           {online === null ? "Connecting…" : online ? "Backend connected" : "Backend not reachable"}
@@ -47,6 +49,7 @@ export default function App() {
             : <UploadView onDone={show} />
         )}
         {tab === "batches" && <BatchesView onOpen={(id) => api.getInspection(id).then(show)} />}
+        {tab === "assistant" && <AssistantView />}
       </main>
 
       <footer>Automated screening aid, not a certification that artwork is print-ready. Confirm against your printer's specification.</footer>

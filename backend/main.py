@@ -21,6 +21,7 @@ from schemas import FindingStatus, InspectionResult
 from services.image_inspector import inspect_image
 from services.pdf_inspector import inspect_pdf
 from services.report_generator import generate_report
+from services.rag_service import get_rag_service, initialize_knowledge_base
 
 MAX_UPLOAD_BYTES = int(os.getenv("PRINTGUARD_MAX_MB", "25")) * 1024 * 1024
 PURGE_INTERVAL_S = int(os.getenv("PRINTGUARD_PURGE_MINUTES", "60")) * 60
@@ -37,6 +38,8 @@ async def _purge_loop():
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
+    # Initialize RAG knowledge base on startup
+    await asyncio.to_thread(initialize_knowledge_base)
     task = asyncio.create_task(_purge_loop())
     yield
     task.cancel()
@@ -202,3 +205,73 @@ def delete_batch(batch_id: int):
 @app.post("/api/batches/purge-expired")
 def purge_now():
     return {"purged_batches": db.purge_expired(db_path(), storage())}
+
+
+# RAG (AI Assistant) endpoints
+
+@app.post("/api/rag/chat")
+def rag_chat(body: dict):
+    """Ask a question using RAG-powered AI assistant."""
+    rag = get_rag_service()
+    question = body.get("question", "")
+    if not question:
+        raise HTTPException(400, "Question is required")
+    return rag.ask(question)
+
+
+@app.get("/api/rag/search")
+def rag_search(query: str, k: int = 5):
+    """Semantic search in packaging standards knowledge base."""
+    if not query:
+        raise HTTPException(400, "Query parameter is required")
+    rag = get_rag_service()
+    return {"results": rag.search(query, k)}
+
+
+@app.post("/api/rag/explain/{finding_id}")
+def rag_explain_finding(finding_id: str, inspection_id: str):
+    """Get RAG-enhanced explanation for a specific finding."""
+    # Load the inspection result
+    insp_dir = storage() / "inspections" / inspection_id
+    result_file = insp_dir / "result.json"
+
+    if not result_file.exists():
+        raise HTTPException(404, "Inspection not found")
+
+    with open(result_file, "r", encoding="utf-8") as f:
+        result = json.load(f)
+
+    # Find the specific finding
+    finding = None
+    for f in result.get("findings", []):
+        if f.get("id") == finding_id:
+            finding = f
+            break
+
+    if not finding:
+        raise HTTPException(404, "Finding not found")
+
+    # Build context query for RAG
+    rule_id = finding.get("rule_id", "")
+    severity = finding.get("severity", "")
+    message = finding.get("message", "")
+
+    query = f"Explain {rule_id} - {severity} severity: {message}. Provide detailed explanation and recommended solutions."
+
+    rag = get_rag_service()
+    response = rag.ask(query)
+
+    return {
+        "finding_id": finding_id,
+        "rule_id": rule_id,
+        "explanation": response.get("answer", ""),
+        "sources": response.get("sources", []),
+        "original_finding": finding
+    }
+
+
+@app.get("/api/rag/stats")
+def rag_stats():
+    """Get RAG knowledge base statistics."""
+    rag = get_rag_service()
+    return rag.get_stats()
